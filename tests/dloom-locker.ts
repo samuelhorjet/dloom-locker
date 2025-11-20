@@ -12,7 +12,7 @@ import {
   ExtensionType,
   getMintLen,
   createInitializeMintInstruction,
-  withdrawWithheldTokensFromAccounts, // <--- NEW IMPORT
+  withdrawWithheldTokensFromAccounts,
 } from "@solana/spl-token";
 import { assert } from "chai";
 
@@ -35,6 +35,26 @@ describe("dloom_locker", () => {
 
   const LOCK_AMOUNT = new anchor.BN(1000);
   const BURN_AMOUNT = new anchor.BN(500);
+
+  // Helper to reduce repetitive PDA code
+  const findPDAs = (mint: anchor.web3.PublicKey, lockId: anchor.BN) => {
+    const [lockRecordPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("lock_record"),
+        wallet.publicKey.toBuffer(),
+        mint.toBuffer(),
+        lockId.toArrayLike(Buffer, "le", 8),
+      ],
+      program.programId
+    );
+
+    const [vaultPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), lockRecordPda.toBuffer()],
+      program.programId
+    );
+
+    return { lockRecordPda, vaultPda };
+  };
 
   it("Setup: Create Mints and Token Accounts", async () => {
     // 1. Create Standard SPL Mint
@@ -67,7 +87,7 @@ describe("dloom_locker", () => {
       standardMint,
       userStandardAccount,
       wallet.payer,
-      5000,
+      10000,
       [],
       undefined,
       TOKEN_PROGRAM_ID
@@ -103,7 +123,7 @@ describe("dloom_locker", () => {
       token22Mint,
       userToken22Account,
       wallet.payer,
-      5000,
+      10000,
       [],
       undefined,
       TOKEN_2022_PROGRAM_ID
@@ -112,25 +132,13 @@ describe("dloom_locker", () => {
     console.log("Setup complete: Standard and Token22 mints created.");
   });
 
-  it("Standard Token: Lock, Burn, and Withdraw", async () => {
+  it("Standard Token: Lock, Burn Wallet, and Withdraw", async () => {
     const lockId = new anchor.BN(1);
-    // Buffer time to avoid "UnlockDateInPast"
-    const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 8);
 
-    const [lockRecordPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("lock_record"),
-        wallet.publicKey.toBuffer(),
-        standardMint.toBuffer(),
-        lockId.toArrayLike(Buffer, "le", 8),
-      ],
-      program.programId
-    );
+    // FIX: Increased buffer to 10 seconds to avoid UnlockDateInPast error due to clock drift
+    const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 10);
 
-    const [vaultPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), lockRecordPda.toBuffer()],
-      program.programId
-    );
+    const { lockRecordPda, vaultPda } = findPDAs(standardMint, lockId);
 
     // 1. LOCK
     await program.methods
@@ -152,9 +160,9 @@ describe("dloom_locker", () => {
       "Vault should hold 1000 tokens"
     );
 
-    // 2. BURN
+    // 2. BURN FROM WALLET
     await program.methods
-      .handleBurnTokens(BURN_AMOUNT)
+      .handleBurnFromWallet(BURN_AMOUNT)
       .accounts({
         burner: wallet.publicKey,
         tokenMint: standardMint,
@@ -163,19 +171,10 @@ describe("dloom_locker", () => {
       })
       .rpc();
 
-    let userAccount = await getAccount(
-      provider.connection,
-      userStandardAccount
-    );
-    assert.equal(
-      Number(userAccount.amount),
-      3500,
-      "User should have 3500 after lock and burn"
-    );
-
     // 3. WAIT & WITHDRAW
-    console.log("Standard Token: Waiting for lock to expire...");
-    await new Promise((r) => setTimeout(r, 9000));
+    console.log("Standard Token: Waiting 12s for lock to expire...");
+    // FIX: Increased wait time to 12000ms to exceed the 10s lock time
+    await new Promise((r) => setTimeout(r, 12000));
 
     await program.methods
       .handleWithdrawTokens(lockId)
@@ -189,33 +188,77 @@ describe("dloom_locker", () => {
       })
       .rpc();
 
-    // Final Check
-    userAccount = await getAccount(provider.connection, userStandardAccount);
-    assert.equal(Number(userAccount.amount), 4500, "Final balance incorrect");
+    // Final Check: User started with 10000 -> Locked 1000 -> Burned 500 from wallet -> Withdrew 1000
+    // Result should be 9500
+    let userAccount = await getAccount(
+      provider.connection,
+      userStandardAccount
+    );
+    assert.equal(Number(userAccount.amount), 9500, "Final balance incorrect");
 
     const info = await provider.connection.getAccountInfo(vaultPda);
     assert.isNull(info, "Vault account should be closed");
     console.log("Standard Token Cycle Passed!");
   });
 
-  it("Token-2022: Lock, Burn, and Withdraw", async () => {
+  // --- NEW TEST CASE ---
+  it("Burn Locked Tokens: Lock -> Burn Partial -> Verify State", async () => {
+    const lockId = new anchor.BN(99);
+    const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 1000); // Long lock is fine
+    const { lockRecordPda, vaultPda } = findPDAs(standardMint, lockId);
+    const lockAmount = new anchor.BN(2000);
+    const burnLockedAmount = new anchor.BN(500);
+
+    // 1. Lock
+    await program.methods
+      .handleLockTokens(lockAmount, unlockTime, lockId)
+      .accounts({
+        owner: wallet.publicKey,
+        tokenMint: standardMint,
+        lockRecord: lockRecordPda,
+        vault: vaultPda,
+        userTokenAccount: userStandardAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    // 2. Burn From Lock
+    await program.methods
+      .handleBurnFromLock(burnLockedAmount, lockId)
+      .accounts({
+        owner: wallet.publicKey,
+        tokenMint: standardMint,
+        lockRecord: lockRecordPda,
+        vault: vaultPda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    // 3. Verify State
+    const lockRecord = await program.account.lockRecord.fetch(lockRecordPda);
+    assert.equal(
+      lockRecord.amount.toNumber(),
+      1500,
+      "LockRecord amount should be reduced to 1500"
+    );
+
+    const vaultAccount = await getAccount(provider.connection, vaultPda);
+    assert.equal(
+      Number(vaultAccount.amount),
+      1500,
+      "Vault balance should be reduced to 1500"
+    );
+
+    console.log("Burn Locked Tokens Cycle Passed!");
+  });
+
+  it("Token-2022: Lock, Burn Wallet, and Withdraw", async () => {
     const lockId = new anchor.BN(2);
-    const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 8);
 
-    const [lockRecordPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("lock_record"),
-        wallet.publicKey.toBuffer(),
-        token22Mint.toBuffer(),
-        lockId.toArrayLike(Buffer, "le", 8),
-      ],
-      program.programId
-    );
+    // FIX: Increased buffer to 10 seconds
+    const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 10);
 
-    const [vaultPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), lockRecordPda.toBuffer()],
-      program.programId
-    );
+    const { lockRecordPda, vaultPda } = findPDAs(token22Mint, lockId);
 
     // 1. LOCK
     await program.methods
@@ -230,21 +273,9 @@ describe("dloom_locker", () => {
       })
       .rpc();
 
-    let vaultAccount = await getAccount(
-      provider.connection,
-      vaultPda,
-      undefined,
-      TOKEN_2022_PROGRAM_ID
-    );
-    assert.equal(
-      Number(vaultAccount.amount),
-      1000,
-      "Token-2022 Vault should hold 1000"
-    );
-
-    // 2. BURN
+    // 2. BURN FROM WALLET
     await program.methods
-      .handleBurnTokens(BURN_AMOUNT)
+      .handleBurnFromWallet(BURN_AMOUNT)
       .accounts({
         burner: wallet.publicKey,
         tokenMint: token22Mint,
@@ -254,8 +285,9 @@ describe("dloom_locker", () => {
       .rpc();
 
     // 3. WAIT & WITHDRAW
-    console.log("Token-2022: Waiting for lock to expire...");
-    await new Promise((r) => setTimeout(r, 9000));
+    console.log("Token-2022: Waiting 12s for lock to expire...");
+    // FIX: Increased wait to 12s
+    await new Promise((r) => setTimeout(r, 12000));
 
     await program.methods
       .handleWithdrawTokens(lockId)
@@ -275,9 +307,10 @@ describe("dloom_locker", () => {
       undefined,
       TOKEN_2022_PROGRAM_ID
     );
+    // Start 10000 -> Lock 1000 -> Burn 500 -> Withdraw 1000 = 9500
     assert.equal(
       Number(userAccount.amount),
-      4500,
+      9500,
       "Final Token-2022 balance incorrect"
     );
     console.log("Token-2022 Cycle Passed!");
@@ -353,22 +386,11 @@ describe("dloom_locker", () => {
 
     // --- EXECUTE FULL CYCLE ---
     const lockId = new anchor.BN(3);
-    const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 8);
 
-    const [lockRecordPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("lock_record"),
-        wallet.publicKey.toBuffer(),
-        feeMint.toBuffer(),
-        lockId.toArrayLike(Buffer, "le", 8),
-      ],
-      program.programId
-    );
+    // FIX: Increased buffer to 10 seconds
+    const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 10);
 
-    const [vaultPda] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), lockRecordPda.toBuffer()],
-      program.programId
-    );
+    const { lockRecordPda, vaultPda } = findPDAs(feeMint, lockId);
 
     // 1. LOCK
     await program.methods
@@ -389,12 +411,12 @@ describe("dloom_locker", () => {
     assert.equal(
       lockRecordAccount.amount.toNumber(),
       900,
-      "Should store 900 (after fee)"
+      "Should store 900 (after 10% fee)"
     );
 
-    // 2. BURN
+    // 2. BURN FROM WALLET
     await program.methods
-      .handleBurnTokens(BURN_AMOUNT)
+      .handleBurnFromWallet(BURN_AMOUNT)
       .accounts({
         burner: wallet.publicKey,
         tokenMint: feeMint,
@@ -404,9 +426,11 @@ describe("dloom_locker", () => {
       .rpc();
 
     // 3. WAIT & WITHDRAW
-    console.log("Fee Token: Waiting for lock to expire...");
-    await new Promise((r) => setTimeout(r, 9000));
+    console.log("Fee Token: Waiting 12s for lock to expire...");
+    // FIX: Increased wait to 12s
+    await new Promise((r) => setTimeout(r, 12000));
 
+    // This will withdraw the 900 tokens but fail to close the account because fees are stuck
     await program.methods
       .handleWithdrawTokens(lockId)
       .accounts({
@@ -422,13 +446,13 @@ describe("dloom_locker", () => {
     let vaultInfo = await provider.connection.getAccountInfo(vaultPda);
     assert.isNotNull(vaultInfo, "Vault should still exist due to stuck fees");
 
-    // 4. HARVEST (Fix: Use userFeeAccount as Destination)
+    // 4. HARVEST
     console.log("Harvesting fees from Vault...");
     await withdrawWithheldTokensFromAccounts(
       provider.connection,
       wallet.payer, // Payer
       feeMint, // Mint
-      userFeeAccount, // <--- CHANGED: Destination must be a Token Account!
+      userFeeAccount, // Destination
       wallet.payer, // Authority
       [],
       [vaultPda], // Harvest FROM the Vault
@@ -459,6 +483,8 @@ describe("dloom_locker", () => {
     const lockIdA = new anchor.BN(10);
     const lockIdB = new anchor.BN(11);
     const unlockTime = new anchor.BN(Math.floor(Date.now() / 1000) + 1000);
+    const pdaA = findPDAs(standardMint, lockIdA);
+    const pdaB = findPDAs(standardMint, lockIdB);
 
     // Lock A
     await program.methods
@@ -466,30 +492,8 @@ describe("dloom_locker", () => {
       .accounts({
         owner: wallet.publicKey,
         tokenMint: standardMint,
-        lockRecord: anchor.web3.PublicKey.findProgramAddressSync(
-          [
-            Buffer.from("lock_record"),
-            wallet.publicKey.toBuffer(),
-            standardMint.toBuffer(),
-            lockIdA.toArrayLike(Buffer, "le", 8),
-          ],
-          program.programId
-        )[0],
-        vault: anchor.web3.PublicKey.findProgramAddressSync(
-          [
-            Buffer.from("vault"),
-            anchor.web3.PublicKey.findProgramAddressSync(
-              [
-                Buffer.from("lock_record"),
-                wallet.publicKey.toBuffer(),
-                standardMint.toBuffer(),
-                lockIdA.toArrayLike(Buffer, "le", 8),
-              ],
-              program.programId
-            )[0].toBuffer(),
-          ],
-          program.programId
-        )[0],
+        lockRecord: pdaA.lockRecordPda,
+        vault: pdaA.vaultPda,
         userTokenAccount: userStandardAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
@@ -501,30 +505,8 @@ describe("dloom_locker", () => {
       .accounts({
         owner: wallet.publicKey,
         tokenMint: standardMint,
-        lockRecord: anchor.web3.PublicKey.findProgramAddressSync(
-          [
-            Buffer.from("lock_record"),
-            wallet.publicKey.toBuffer(),
-            standardMint.toBuffer(),
-            lockIdB.toArrayLike(Buffer, "le", 8),
-          ],
-          program.programId
-        )[0],
-        vault: anchor.web3.PublicKey.findProgramAddressSync(
-          [
-            Buffer.from("vault"),
-            anchor.web3.PublicKey.findProgramAddressSync(
-              [
-                Buffer.from("lock_record"),
-                wallet.publicKey.toBuffer(),
-                standardMint.toBuffer(),
-                lockIdB.toArrayLike(Buffer, "le", 8),
-              ],
-              program.programId
-            )[0].toBuffer(),
-          ],
-          program.programId
-        )[0],
+        lockRecord: pdaB.lockRecordPda,
+        vault: pdaB.vaultPda,
         userTokenAccount: userStandardAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
       })

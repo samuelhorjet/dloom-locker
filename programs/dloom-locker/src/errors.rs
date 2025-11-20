@@ -11,4 +11,10 @@ pub enum LockerError {
     StillLocked,
     #[msg("The lock duration is too long.")]
     LockDurationTooLong,
+    #[msg("Vault has withheld transfer fees. Cannot close account until Token Admin harvests them.")]
+    CannotCloseWithheldFees,
+    #[msg("Burn amount exceeds locked amount.")]
+    BurnAmountExceedsLocked,
+    #[msg("Math operation overflow.")]
+    MathOverflow, 
 }

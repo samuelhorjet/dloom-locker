@@ -43,7 +43,11 @@ pub fn handle_lock_tokens(
 
     ctx.accounts.vault.reload()?;
     let balance_after = ctx.accounts.vault.amount;
-    let actual_amount = balance_after.checked_sub(balance_before).unwrap();
+    
+    // --- FIX: Removed unwrap() ---
+    let actual_amount = balance_after
+        .checked_sub(balance_before)
+        .ok_or(LockerError::MathOverflow)?;
 
     let lock_record = &mut ctx.accounts.lock_record;
     lock_record.bump = ctx.bumps.lock_record;

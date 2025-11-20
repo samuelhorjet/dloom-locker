@@ -1,8 +1,9 @@
 // FILE: programs/dloom_locker/src/instructions/withdraw_tokens.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, CloseAccount, Mint, TokenAccount, TokenInterface, TransferChecked};
+use anchor_spl::token_2022::spl_token_2022::extension::BaseStateWithExtensions;
 use anchor_spl::token_2022::spl_token_2022::{
-    extension::{transfer_fee::TransferFeeAmount, StateWithExtensions, BaseStateWithExtensions},
+    extension::{transfer_fee::TransferFeeAmount, StateWithExtensions},
     state::Account as Token2022Account,
 };
 use crate::{errors::LockerError, events::TokensWithdrawn, state::LockRecord};
@@ -11,20 +12,19 @@ pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Res
     require!(Clock::get()?.unix_timestamp >= ctx.accounts.lock_record.unlock_timestamp, LockerError::StillLocked);
     require!(ctx.accounts.lock_record.amount > 0, LockerError::ZeroAmount);
 
-    let owner_key = ctx.accounts.lock_record.owner;
-    let mint_key = ctx.accounts.lock_record.mint;
+    let owner_key = ctx.accounts.owner.key();
+    let mint_key = ctx.accounts.token_mint.key();
     let bump = ctx.accounts.lock_record.bump;
     let lock_id_bytes = lock_id.to_le_bytes(); 
 
     let seeds = &[
         b"lock_record".as_ref(),
-        owner_key.as_ref(),     // Now referencing local variable, not account
-        mint_key.as_ref(),      // Now referencing local variable
-        lock_id_bytes.as_ref(), // Now referencing local variable
+        owner_key.as_ref(),
+        mint_key.as_ref(),
+        lock_id_bytes.as_ref(),
         &[bump],
     ];
     let signer_seeds = &[&seeds[..]];
-    // -------------------------------------------------------------------------
 
     // 1. Transfer tokens back to user
     token_interface::transfer_checked(
@@ -45,6 +45,7 @@ pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Res
     let withdrawn_amount = ctx.accounts.lock_record.amount;
     ctx.accounts.lock_record.amount = 0;
 
+    // 2. Check for Transfer Fees
     let has_fees = {
         let vault_info = ctx.accounts.vault.to_account_info();
         let vault_data = vault_info.try_borrow_data()?;
@@ -59,9 +60,9 @@ pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Res
         }
     };
 
-    // 4. Close Logic
+    // 3. Conditional Close Logic
     if !has_fees {
-        // A. Close Vault
+        // A. Close Vault (SPL Account)
         token_interface::close_account(CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             CloseAccount {
@@ -72,13 +73,21 @@ pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Res
             signer_seeds,
         ))?;
 
-        // B. Close LockRecord
+        // B. Close LockRecord (Anchor Account)
+        // Since we can't use #[account(close)] conditionally easily here without messing up the 'withdraw only' logic,
+        // we manually close it safely.
         let dest = ctx.accounts.owner.to_account_info();
         let source = ctx.accounts.lock_record.to_account_info();
-        **dest.try_borrow_mut_lamports()? = dest.lamports().checked_add(source.lamports()).unwrap();
+        
+        // Transfer all lamports
+        let dest_starting_lamports = dest.lamports();
+        **dest.try_borrow_mut_lamports()? = dest_starting_lamports.checked_add(source.lamports()).unwrap();
         **source.try_borrow_mut_lamports()? = 0;
+        
+        // Important: We do NOT modify data here to avoid serialization errors.
+        // Anchor will see lamports=0 and consider it closed.
     } else {
-        msg!("Vault has withheld fees. Accounts left open. Call 'close_vault' after harvest.");
+        msg!("Vault has withheld fees. Accounts left open. User got principal tokens back.");
     }
 
     emit!(TokensWithdrawn {

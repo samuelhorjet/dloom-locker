@@ -2,22 +2,106 @@
   "address": "AVfmdPiqXfc15Pt8PPRXxTP5oMs4D1CdijARiz8mFMFD",
   "metadata": {
     "name": "dloom_locker",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "spec": "0.1.0",
-    "description": "Created with Anchor"
+    "description": "A Solana locker program created with Anchor",
+    "repository": "https://github.com/samuelhorjet/dloom-locker"
   },
   "instructions": [
     {
-      "name": "handle_burn_tokens",
+      "name": "handle_burn_from_lock",
       "discriminator": [
-        143,
-        14,
-        45,
-        1,
-        53,
-        119,
-        66,
-        91
+        32,
+        48,
+        112,
+        75,
+        9,
+        88,
+        64,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "lock_record"
+          ]
+        },
+        {
+          "name": "token_mint",
+          "writable": true
+        },
+        {
+          "name": "lock_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  99,
+                  107,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "account",
+                "path": "token_mint"
+              },
+              {
+                "kind": "arg",
+                "path": "lock_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "lock_record"
+          ]
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "lock_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "handle_burn_from_wallet",
+      "discriminator": [
+        58,
+        105,
+        233,
+        15,
+        38,
+        127,
+        27,
+        253
       ],
       "accounts": [
         {
@@ -326,6 +410,19 @@
   ],
   "events": [
     {
+      "name": "LockedTokensBurned",
+      "discriminator": [
+        98,
+        110,
+        252,
+        152,
+        156,
+        133,
+        233,
+        174
+      ]
+    },
+    {
       "name": "TokensBurned",
       "discriminator": [
         230,
@@ -385,6 +482,21 @@
       "code": 6003,
       "name": "LockDurationTooLong",
       "msg": "The lock duration is too long."
+    },
+    {
+      "code": 6004,
+      "name": "CannotCloseWithheldFees",
+      "msg": "Vault has withheld transfer fees. Cannot close account until Token Admin harvests them."
+    },
+    {
+      "code": 6005,
+      "name": "BurnAmountExceedsLocked",
+      "msg": "Burn amount exceeds locked amount."
+    },
+    {
+      "code": 6006,
+      "name": "MathOverflow",
+      "msg": "Math operation overflow."
     }
   ],
   "types": [
@@ -419,6 +531,30 @@
           },
           {
             "name": "id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LockedTokensBurned",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "lock_id",
             "type": "u64"
           }
         ]

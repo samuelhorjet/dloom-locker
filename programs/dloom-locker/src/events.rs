@@ -22,3 +22,11 @@ pub struct TokensBurned {
     pub mint: Pubkey,
     pub amount: u64,
 }
+
+#[event]
+pub struct LockedTokensBurned {
+    pub owner: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+    pub lock_id: u64,
+}
