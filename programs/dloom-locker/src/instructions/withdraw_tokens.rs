@@ -1,4 +1,3 @@
-// FILE: programs/dloom_locker/src/instructions/withdraw_tokens.rs
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, CloseAccount, Mint, TokenAccount, TokenInterface, TransferChecked};
 use anchor_spl::token_2022::spl_token_2022::extension::BaseStateWithExtensions;
@@ -8,9 +7,11 @@ use anchor_spl::token_2022::spl_token_2022::{
 };
 use crate::{errors::LockerError, events::TokensWithdrawn, state::LockRecord};
 
-pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Result<()> {
+pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64, amount: u64) -> Result<()> {
     require!(Clock::get()?.unix_timestamp >= ctx.accounts.lock_record.unlock_timestamp, LockerError::StillLocked);
-    require!(ctx.accounts.lock_record.amount > 0, LockerError::ZeroAmount);
+    
+    require!(amount > 0, LockerError::ZeroAmount);
+    require!(amount <= ctx.accounts.lock_record.amount, LockerError::InsufficientFunds); // Ensure you define InsufficientFunds in errors.rs
 
     let owner_key = ctx.accounts.owner.key();
     let mint_key = ctx.accounts.token_mint.key();
@@ -38,12 +39,13 @@ pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Res
             },
             signer_seeds,
         ),
-        ctx.accounts.lock_record.amount,
+        amount, 
         ctx.accounts.token_mint.decimals,
     )?;
 
-    let withdrawn_amount = ctx.accounts.lock_record.amount;
-    ctx.accounts.lock_record.amount = 0;
+    // CHANGE 4: Update state - subtract withdrawn amount
+    ctx.accounts.lock_record.amount = ctx.accounts.lock_record.amount.checked_sub(amount).unwrap();
+    let remaining_amount = ctx.accounts.lock_record.amount;
 
     // 2. Check for Transfer Fees
     let has_fees = {
@@ -61,7 +63,8 @@ pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Res
     };
 
     // 3. Conditional Close Logic
-    if !has_fees {
+    // CHANGE 5: Only close if NO fees exist AND remaining balance is 0
+    if !has_fees && remaining_amount == 0 {
         // A. Close Vault (SPL Account)
         token_interface::close_account(CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
@@ -74,33 +77,33 @@ pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Res
         ))?;
 
         // B. Close LockRecord (Anchor Account)
-        // Since we can't use #[account(close)] conditionally easily here without messing up the 'withdraw only' logic,
-        // we manually close it safely.
         let dest = ctx.accounts.owner.to_account_info();
         let source = ctx.accounts.lock_record.to_account_info();
         
-        // Transfer all lamports
         let dest_starting_lamports = dest.lamports();
         **dest.try_borrow_mut_lamports()? = dest_starting_lamports.checked_add(source.lamports()).unwrap();
         **source.try_borrow_mut_lamports()? = 0;
         
-        // Important: We do NOT modify data here to avoid serialization errors.
-        // Anchor will see lamports=0 and consider it closed.
+        msg!("Lock fully withdrawn and accounts closed.");
     } else {
-        msg!("Vault has withheld fees. Accounts left open. User got principal tokens back.");
+        if remaining_amount > 0 {
+            msg!("Partial withdrawal complete. Remaining locked: {}", remaining_amount);
+        } else {
+            msg!("Vault has withheld fees. Accounts left open. User got principal tokens back.");
+        }
     }
 
     emit!(TokensWithdrawn {
         owner: ctx.accounts.owner.key(),
         mint: ctx.accounts.lock_record.mint,
-        amount: withdrawn_amount,
+        amount: amount, 
     });
 
     Ok(())
 }
 
 #[derive(Accounts)]
-#[instruction(lock_id: u64)]
+#[instruction(lock_id: u64, amount: u64)] 
 pub struct WithdrawTokens<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,

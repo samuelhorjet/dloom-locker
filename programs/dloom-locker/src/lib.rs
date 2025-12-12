@@ -18,8 +18,8 @@ pub mod dloom_locker {
         instructions::lock_tokens::handle_lock_tokens(ctx, amount, unlock_timestamp, lock_id)
     }
 
-    pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64) -> Result<()> {
-        instructions::withdraw_tokens::handle_withdraw_tokens(ctx, lock_id)
+    pub fn handle_withdraw_tokens(ctx: Context<WithdrawTokens>, lock_id: u64, amount: u64,) -> Result<()> {
+        instructions::withdraw_tokens::handle_withdraw_tokens(ctx, lock_id, amount)
     }
 
     pub fn handle_close_vault(ctx: Context<CloseVault>, lock_id: u64) -> Result<()> {

@@ -143,7 +143,7 @@ describe("dloom_locker", () => {
     // 1. LOCK
     await program.methods
       .handleLockTokens(LOCK_AMOUNT, unlockTime, lockId)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         tokenMint: standardMint,
         lockRecord: lockRecordPda,
@@ -177,8 +177,8 @@ describe("dloom_locker", () => {
     await new Promise((r) => setTimeout(r, 12000));
 
     await program.methods
-      .handleWithdrawTokens(lockId)
-      .accounts({
+      .handleWithdrawTokens(lockId, LOCK_AMOUNT)
+      .accountsPartial({
         owner: wallet.publicKey,
         lockRecord: lockRecordPda,
         vault: vaultPda,
@@ -212,7 +212,7 @@ describe("dloom_locker", () => {
     // 1. Lock
     await program.methods
       .handleLockTokens(lockAmount, unlockTime, lockId)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         tokenMint: standardMint,
         lockRecord: lockRecordPda,
@@ -225,7 +225,7 @@ describe("dloom_locker", () => {
     // 2. Burn From Lock
     await program.methods
       .handleBurnFromLock(burnLockedAmount, lockId)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         tokenMint: standardMint,
         lockRecord: lockRecordPda,
@@ -263,7 +263,7 @@ describe("dloom_locker", () => {
     // 1. LOCK
     await program.methods
       .handleLockTokens(LOCK_AMOUNT, unlockTime, lockId)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         tokenMint: token22Mint,
         lockRecord: lockRecordPda,
@@ -290,8 +290,8 @@ describe("dloom_locker", () => {
     await new Promise((r) => setTimeout(r, 12000));
 
     await program.methods
-      .handleWithdrawTokens(lockId)
-      .accounts({
+      .handleWithdrawTokens(lockId, LOCK_AMOUNT)
+      .accountsPartial({
         owner: wallet.publicKey,
         lockRecord: lockRecordPda,
         vault: vaultPda,
@@ -395,7 +395,7 @@ describe("dloom_locker", () => {
     // 1. LOCK
     await program.methods
       .handleLockTokens(LOCK_AMOUNT, unlockTime, lockId)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         tokenMint: feeMint,
         lockRecord: lockRecordPda,
@@ -432,8 +432,8 @@ describe("dloom_locker", () => {
 
     // This will withdraw the 900 tokens but fail to close the account because fees are stuck
     await program.methods
-      .handleWithdrawTokens(lockId)
-      .accounts({
+      .handleWithdrawTokens(lockId, LOCK_AMOUNT)
+      .accountsPartial({
         owner: wallet.publicKey,
         lockRecord: lockRecordPda,
         vault: vaultPda,
@@ -464,7 +464,7 @@ describe("dloom_locker", () => {
     console.log("Closing cleaned Vault...");
     await program.methods
       .handleCloseVault(lockId)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         lockRecord: lockRecordPda,
         vault: vaultPda,
@@ -489,7 +489,7 @@ describe("dloom_locker", () => {
     // Lock A
     await program.methods
       .handleLockTokens(new anchor.BN(100), unlockTime, lockIdA)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         tokenMint: standardMint,
         lockRecord: pdaA.lockRecordPda,
@@ -502,7 +502,7 @@ describe("dloom_locker", () => {
     // Lock B
     await program.methods
       .handleLockTokens(new anchor.BN(100), unlockTime, lockIdB)
-      .accounts({
+      .accountsPartial({
         owner: wallet.publicKey,
         tokenMint: standardMint,
         lockRecord: pdaB.lockRecordPda,

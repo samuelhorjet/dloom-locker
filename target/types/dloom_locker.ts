@@ -8,7 +8,7 @@ export type DloomLocker = {
   "address": "AVfmdPiqXfc15Pt8PPRXxTP5oMs4D1CdijARiz8mFMFD",
   "metadata": {
     "name": "dloomLocker",
-    "version": "1.0.0",
+    "version": "3.0.0",
     "spec": "0.1.0",
     "description": "A Solana locker program created with Anchor",
     "repository": "https://github.com/samuelhorjet/dloom-locker"
@@ -395,6 +395,10 @@ export type DloomLocker = {
         {
           "name": "lockId",
           "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
         }
       ]
     }
@@ -503,6 +507,11 @@ export type DloomLocker = {
       "code": 6006,
       "name": "mathOverflow",
       "msg": "Math operation overflow."
+    },
+    {
+      "code": 6007,
+      "name": "insufficientFunds",
+      "msg": "Requested amount exceeds the available balance."
     }
   ],
   "types": [

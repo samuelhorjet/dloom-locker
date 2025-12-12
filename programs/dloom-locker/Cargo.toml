@@ -1,6 +1,6 @@
 [package]
 name = "dloom-locker"
-version = "2.0.0"
+version = "3.0.0"
 description = "A Solana locker program created with Anchor"
 authors = ["Samuel Horjet <samuelhorjet001@gmail.com>"]
 repository = "https://github.com/samuelhorjet/dloom-locker"

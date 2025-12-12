@@ -2,7 +2,7 @@
   "address": "AVfmdPiqXfc15Pt8PPRXxTP5oMs4D1CdijARiz8mFMFD",
   "metadata": {
     "name": "dloom_locker",
-    "version": "1.0.0",
+    "version": "3.0.0",
     "spec": "0.1.0",
     "description": "A Solana locker program created with Anchor",
     "repository": "https://github.com/samuelhorjet/dloom-locker"
@@ -389,6 +389,10 @@
         {
           "name": "lock_id",
           "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
         }
       ]
     }
@@ -497,6 +501,11 @@
       "code": 6006,
       "name": "MathOverflow",
       "msg": "Math operation overflow."
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientFunds",
+      "msg": "Requested amount exceeds the available balance."
     }
   ],
   "types": [
