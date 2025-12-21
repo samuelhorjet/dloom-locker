@@ -35,4 +35,12 @@ pub mod dloom_locker {
     pub fn handle_burn_from_lock(ctx: Context<BurnFromLock>, amount: u64, lock_id: u64) -> Result<()> {
         instructions::burn_from_lock::handle_burn_from_lock(ctx, amount, lock_id)
     }
+
+    // NEW: Burns multiple tokens from a user's wallet in a single transaction
+    pub fn handle_burn_batch<'info>(
+        ctx: Context<'_, '_, '_, 'info, BurnBatch<'info>>,
+        amounts: Vec<u64>,
+    ) -> Result<()> {
+        instructions::burn_batch::handle_burn_batch(ctx, amounts)
+    }
 }

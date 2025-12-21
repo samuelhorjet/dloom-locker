@@ -30,3 +30,10 @@ pub struct LockedTokensBurned {
     pub amount: u64,
     pub lock_id: u64,
 }
+
+#[event]
+pub struct BatchTokensBurned {
+    pub burner: Pubkey,
+    pub mints: Vec<Pubkey>,
+    pub amounts: Vec<u64>,
+}

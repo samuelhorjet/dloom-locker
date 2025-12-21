@@ -21,4 +21,6 @@ pub enum LockerError {
     MathOverflow,
     #[msg("Requested amount exceeds the available balance.")]
     InsufficientFunds,
+    #[msg("Batch burn account validation failed")]
+    InvalidBatchAccounts,
 }
