@@ -9,6 +9,37 @@
   },
   "instructions": [
     {
+      "name": "handle_burn_batch",
+      "discriminator": [
+        136,
+        226,
+        65,
+        55,
+        72,
+        51,
+        171,
+        54
+      ],
+      "accounts": [
+        {
+          "name": "burner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amounts",
+          "type": {
+            "vec": "u64"
+          }
+        }
+      ]
+    },
+    {
       "name": "handle_burn_from_lock",
       "discriminator": [
         32,
@@ -414,6 +445,19 @@
   ],
   "events": [
     {
+      "name": "BatchTokensBurned",
+      "discriminator": [
+        238,
+        52,
+        229,
+        91,
+        182,
+        43,
+        221,
+        154
+      ]
+    },
+    {
       "name": "LockedTokensBurned",
       "discriminator": [
         98,
@@ -506,9 +550,38 @@
       "code": 6007,
       "name": "InsufficientFunds",
       "msg": "Requested amount exceeds the available balance."
+    },
+    {
+      "code": 6008,
+      "name": "InvalidBatchAccounts",
+      "msg": "Batch burn account validation failed"
     }
   ],
   "types": [
+    {
+      "name": "BatchTokensBurned",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "burner",
+            "type": "pubkey"
+          },
+          {
+            "name": "mints",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "amounts",
+            "type": {
+              "vec": "u64"
+            }
+          }
+        ]
+      }
+    },
     {
       "name": "LockRecord",
       "type": {

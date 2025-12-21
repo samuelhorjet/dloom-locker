@@ -15,6 +15,37 @@ export type DloomLocker = {
   },
   "instructions": [
     {
+      "name": "handleBurnBatch",
+      "discriminator": [
+        136,
+        226,
+        65,
+        55,
+        72,
+        51,
+        171,
+        54
+      ],
+      "accounts": [
+        {
+          "name": "burner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "amounts",
+          "type": {
+            "vec": "u64"
+          }
+        }
+      ]
+    },
+    {
       "name": "handleBurnFromLock",
       "discriminator": [
         32,
@@ -420,6 +451,19 @@ export type DloomLocker = {
   ],
   "events": [
     {
+      "name": "batchTokensBurned",
+      "discriminator": [
+        238,
+        52,
+        229,
+        91,
+        182,
+        43,
+        221,
+        154
+      ]
+    },
+    {
       "name": "lockedTokensBurned",
       "discriminator": [
         98,
@@ -512,9 +556,38 @@ export type DloomLocker = {
       "code": 6007,
       "name": "insufficientFunds",
       "msg": "Requested amount exceeds the available balance."
+    },
+    {
+      "code": 6008,
+      "name": "invalidBatchAccounts",
+      "msg": "Batch burn account validation failed"
     }
   ],
   "types": [
+    {
+      "name": "batchTokensBurned",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "burner",
+            "type": "pubkey"
+          },
+          {
+            "name": "mints",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "amounts",
+            "type": {
+              "vec": "u64"
+            }
+          }
+        ]
+      }
+    },
     {
       "name": "lockRecord",
       "type": {

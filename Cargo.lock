@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "dloom-locker"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
